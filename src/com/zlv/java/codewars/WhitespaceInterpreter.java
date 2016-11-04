@@ -2,9 +2,7 @@ package com.zlv.java.codewars;
 
 import java.io.*;
 import java.util.*;
-import java.util.function.Consumer;
 import java.util.regex.*;
-import java.util.stream.*;
 
 public class WhitespaceInterpreter {
 	
@@ -12,7 +10,7 @@ public class WhitespaceInterpreter {
 	 * true - print logs to console
 	 * false - don't print logs
 	 */
-	private static final boolean DEBUG = false;
+	private static final boolean DEBUG = true;
 
 	/*
 	 * IMPs: 
@@ -194,16 +192,16 @@ public class WhitespaceInterpreter {
 	 * <li>A label may be declared either before or after a command that refers to it.
 	 * </p>
 	 * @param code <b>Only the valid Label format is allowed</b>
-	 * @return will return an empty string if code's length is less than 2. for example "sl" or "l".
+	 * @return will return an empty string if code's length is less than 1. for example "l".
 	 * @throws RuntimeException when the input code is not a valid label format.
 	 */
 	private static String parsingLabel(String code) {
 		if (!code.matches(REG_ONLY_LABLE))
 			throw new RuntimeException("Parsing Lable Error: the input code is " + code);
-		if (code.length() <= 2)
+		if (code.length() <= 1)
 			return "";
 		else
-			return code.substring(1, code.length() - 1);
+			return code.substring(0, code.length() - 1);
 	}
 	
 	/**
@@ -220,7 +218,8 @@ public class WhitespaceInterpreter {
 	 * @throws IOException if an I/O error occurs when using is.read().
 	 */
 	private static char paringInputChars(InputStream is) throws IOException {
-		return (char) is.read();
+		char c = (char) is.read();println(String.valueOf(c));
+		return c;
 	}
 	
 	/**
@@ -234,11 +233,25 @@ public class WhitespaceInterpreter {
 	 * </p>
 	 * @param is <b>the input stream</b>
 	 * @return return a integer.
-	 * @throws IOException if an I/O error occurs when using is.read().
-	 * @throws NumberFormatException if the input string doesn't contain a parsable integer.
+	 * @throws Exception 
 	 */
-	private static int paringInputNum(InputStream is) throws IOException {
-		return Integer.parseInt(new BufferedReader(new InputStreamReader(is)).readLine());
+	private static int paringInputNum(InputStream is) throws Exception {
+		String numStr = new BufferedReader(new InputStreamReader(is)).readLine();
+		if(null == numStr) {
+			throw new Exception();
+		}
+		try{
+			return Integer.parseInt(numStr);
+		} catch (NumberFormatException e) {
+			
+		}
+		try {
+			return Integer.parseInt(numStr,16);
+		} catch (NumberFormatException e) {
+			
+		}
+		
+		throw new NumberFormatException();
 	}
 	
 	/**
@@ -313,7 +326,9 @@ public class WhitespaceInterpreter {
 			if (m.find()) {
 				int index = parsingNum(m.group(1));
 				if (index < 0 || index >= stack.size()){
+					int top = stack.pop();
 					stack.clear();
+					stack.push(top);
 				} else {
 					int top = stack.pop();
 					while(index-->0) stack.pop();
@@ -442,13 +457,17 @@ public class WhitespaceInterpreter {
 			
 			m = Pattern.compile(REG_HEAP_POP_2NUM_STORE_FIRST_AT_ADDR_FIRST).matcher(code);
 			if (m.find()) {
-				int a = stack.pop();
-				heap.put(a, a);
+				int key = stack.pop();
+				if(heap.containsKey(key))
+					stack.push(heap.get(key));
+				else
+					throw new IllegalFormatConversionException((char) 0, null);
 				break;
 			}
 			
 			throw new RuntimeException("ARITHMETIC: unclean termination");
 		} while(false);
+		
 	}
 
 	/**
@@ -467,10 +486,11 @@ public class WhitespaceInterpreter {
 	 * @param in the input stream.
 	 * @param out the output stream.
 	 * @return null
+	 * @throws Exception 
 	 * @throws RuntimeException unknown commands or couldn't convert input to num/char
 	 * @throws EmptyStackException should be thrown if there are not enough items on the stack to complete an operation.
 	 */
-	private static void io(String code, Stack<Integer> stack, Map<Integer, Integer> heap, InputStream in, OutputStream out) {
+	private static void io(String code, Stack<Integer> stack, Map<Integer, Integer> heap, InputStream in, OutputStream out) throws Exception {
 		Matcher m = null;
 		
 		do {
@@ -503,11 +523,12 @@ public class WhitespaceInterpreter {
 					heap.put(b, a);
 					break;
 				}
-			} catch (IOException e) {
-				throw new RuntimeException("ARITHMETIC: couldn't convert input to num/char");
-			}
+			} catch(NumberFormatException e) {
+				throw e;
+			} catch (Exception e) {
+				throw e;//new RuntimeException("ARITHMETIC: couldn't convert input to num/char");
+			} 
 			
-			throw new RuntimeException("ARITHMETIC: unclean termination");
 		} while(false);
 	}
 
@@ -519,71 +540,86 @@ public class WhitespaceInterpreter {
 
 
 	// solution 1
-	public static String execute(String code, InputStream input) {
+	public static String execute(String code, InputStream input) throws Exception {
 		// ... you code ...
 		ByteArrayOutputStream out = new ByteArrayOutputStream();
 		return execute(code, input, out);
 	}
 	
 	// solution 2
-	public static String execute(String code, InputStream input, OutputStream output) {
+	public static String execute(String code, InputStream input, OutputStream output) throws Exception {
 		Stack<Integer> stack = new Stack<>();
 		Map<Integer, Integer> heap = new HashMap<>();
 		Map<String, Integer> nameSpace = new HashMap<>();
 		List<String> codeSection = new ArrayList<String>();	//code section should be in order.
+		Set<String> labelRepeatList = new HashSet();
+		
 		
 		// output stream
 		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		
+		// convert ByteArrayOutputStream to OutputStream.
+		if(null == output) {
+			output = baos;
+		}
 		
 		// convert code to readable format.
 		code = unbleach(code);
 		println("Input string after unbleach: " + code);
 
 		// Scan code and fill code section and name space for program.
-		if(code.matches(String.format("^(%s)+$",getWholeReg(REG_ARR)))) {
-			Matcher m = Pattern.compile(getWholeReg(REG_ARR)).matcher(code);
-			
-			int addr = 0;
-			while (m.find()) {
-				String s = m.group();
-				
-				//  Mark locations in the program with all labels. 
-				Matcher mt = Pattern.compile(REG_FLOW_CONTROL_MARK_FUNC).matcher(s);
-				if(mt.find()) {
-					String name = mt.group(1);
-					nameSpace.put(name, addr);
-				} else {
-					// if don't match REG_FLOW_CONTROL_MARK_FUNC, just arrange a addresses for every expression in order.
-					codeSection.add(s);
-					addr++;
-				}
+		Matcher m = Pattern.compile(getWholeReg(REG_ARR)).matcher(code);
+		int addr = 0;
+		int lastIndex = 0;
+		int stopAddr = -1;
+		while (m.find()) {
+			println(String.format("command is %s, start index = %d, end index = %d ", m.group(), m.start(), m.end()));
+			if(m.start() == lastIndex) lastIndex = m.end();
+			else {
+				//stopAddr = addr;
+				String rstNum = String.valueOf((m.start() - lastIndex));
+				output.write(rstNum.getBytes());
+				output.flush();
+				throw new Exception();
 			}
+			String s = m.group();
+			codeSection.add(s);
+			addr++;
 			
-		} else {
-			throw new RuntimeException("The input code format error.");
+			//  Mark locations in the program with all labels. 
+			Matcher mt = Pattern.compile(REG_FLOW_CONTROL_MARK_FUNC).matcher(s);
+			if(mt.find()) {
+				String name = mt.group(1);
+				String label = parsingLabel(name);
+				if(!nameSpace.containsKey(label))
+					nameSpace.put(label, addr);
+				else
+					labelRepeatList.add(label);
+			}
 		}
 		
-		executeCode(codeSection, nameSpace, stack, heap, input, baos);
-
-		// convert ByteArrayOutputStream to OutputStream.
-	    try {
-			byte[] arr = baos.toByteArray();
-			output.write(arr);
-		} catch (IOException e) {
-			e.printStackTrace();
-			throw new RuntimeException();
-		} 
+		try {
+			executeUnderFlowControl(codeSection, nameSpace, stack, heap, input, output, labelRepeatList, stopAddr);
+		} catch (Exception e) {
+			output.flush();
+			throw e;
+		}
 	    
-		return baos.toString();
+		return output.toString();
 	}
 	
-	private static void executeCode(List<String> codeSection, Map<String, Integer> nameSpace,
-			Stack<Integer> stack, Map<Integer, Integer> heap, InputStream input, OutputStream output) {
+	private static void executeUnderFlowControl(List<String> codeSection, Map<String, Integer> nameSpace,
+			Stack<Integer> stack, Map<Integer, Integer> heap, InputStream input, OutputStream output, Set<String> labelRepeatList, int stopAddr) throws Exception {
 		// TODO Auto-generated method stub
 		Stack<Integer> progStack = new Stack<Integer>();
+		Set<String> labels = new HashSet();
 		int pointer = 0;
 		
 		while(pointer<codeSection.size() && pointer >= 0) {
+			if(stopAddr == pointer) {
+				output.flush();
+				throw new Exception();
+			}
 			String code = codeSection.get(pointer++);
 			
 			if(code.matches(getWholeReg(STACK_REG_ARR))) {
@@ -609,13 +645,22 @@ public class WhitespaceInterpreter {
 				// have been deal before call this function.
 				mt = Pattern.compile(REG_FLOW_CONTROL_MARK_FUNC).matcher(code);
 				if(mt.find()) {
-					throw new RuntimeException("Shouldn't have REG_FLOW_CONTROL_MARK_FUNC code");
+					String label = parsingLabel(mt.group(1));
+					if(labelRepeatList.contains(label)) {
+						output.flush();
+						throw new Exception(output.toString());
+					}
+					else labels.add(label);
 				}
 				
 				mt = Pattern.compile(REG_FLOW_CONTROL_CALL_FUNC).matcher(code);
 				if(mt.find()) {
 					progStack.push(pointer);
 					String label = parsingLabel(mt.group(1));
+					if(labelRepeatList.contains(label)) {
+						output.flush();
+						throw new Exception(output.toString());
+					}
 					pointer = nameSpace.get(label);
 				}
 				
@@ -627,6 +672,10 @@ public class WhitespaceInterpreter {
 				mt = Pattern.compile(REG_FLOW_CONTROL_GO).matcher(code);
 				if(mt.find()) {
 					String label = parsingLabel(mt.group(1));
+					if(labelRepeatList.contains(label)) {
+						output.flush();
+						throw new Exception(output.toString());
+					}
 					pointer = nameSpace.get(label);
 				}
 				
@@ -634,6 +683,10 @@ public class WhitespaceInterpreter {
 				if(mt.find()) {
 					if(stack.pop() == 0) {
 						String label = parsingLabel(mt.group(1));
+						if(labelRepeatList.contains(label)) {
+							output.flush();
+							throw new Exception(output.toString());
+						}
 						pointer = nameSpace.get(label);
 					}
 				}
@@ -642,11 +695,21 @@ public class WhitespaceInterpreter {
 				if(mt.find()) {
 					if(stack.pop() < 0) {
 						String label = parsingLabel(mt.group(1));
+						if(labelRepeatList.contains(label)) {
+							output.flush();
+							throw new Exception(output.toString());
+						}
 						pointer = nameSpace.get(label);
 					}
 				}
 			}
+			print("stack : ");stack.stream().forEach(i -> print(i+","));print("\n");
+			print("heap : ");heap.keySet().stream().forEach(i -> print(String.format("(%d -> %d)",i,heap.get(i))));print("\n");
+			print("name space : "); nameSpace.keySet().stream().forEach(key -> print(String.format("(%s -> %d)",key,nameSpace.get(key))));print("\n");
 		}
+		
+		if(!progStack.isEmpty()) 
+			throw new Exception();
 		
 	}
 
@@ -658,33 +721,15 @@ public class WhitespaceInterpreter {
 		if(DEBUG) System.out.println(s);
 	}
 	
-	public static void main(String[] args) {
+	public static void main(String[] args) throws Exception {
+
 		String[][] tests = { 
-				{ "   \t     \t\n\t\n  \n\n\n", "A" }, 
-				{ "   \t    \t \n\t\n  \n\n\n", "B" },
-				{ "   \t    \t\t\n\t\n  \n\n\n", "C" }, 
-			    {"blahhhh   \targgggghhh     \t\n\t\n  \n\n\n", "A"},
-			    {" I heart \t  cats  \t \n\t\n  \n\n\n", "B"},
-			    {"   \t  welcome  \t\t\n\t\n to the\nnew\nworld\n", "C"},
-			    {"   \t\t\n   \t\t\n\t\n \t\t\n \t\n\n\n", "33"},
-			    {"   \t\t\n \n \t\n \t\t\n \t\n\n\n", "33"},
-			    {"   \t\n   \t \n   \t\t\n \t  \t \n\t\n \t\n\n\n", "1"},
-			    {"   \t\n   \t \n   \t\t\n \t  \t\n\t\n \t\n\n\n", "2"},
-			    {"   \t\n   \t \n   \t\t\n \t   \n\t\n \t\n\n\n", "3"},
-			    {"   \t\t\n   \t \n \n\t\t\n \t\t\n \t\n\n\n", "32"},
-			    {"   \t\t\n   \t \n \n\t \n\n\t\n \t\n\n\n", "2"},
-			    {"   \t\t\n   \t \n   \t\n   \t  \n   \t\t \n   \t \t\n   \t\t\t\n \n\t \t\n \t\t\n\t\n \t\t\n \t\t\n \t\t\n \t\n\n\n", "5123"},
-			    {"  \t\t\n\t\n \t\n\n\n", "-1"},
-			    {"  \t\t \n\t\n \t\n\n\n", "-2"},
-			    {"  \t\t\t\n\t\n \t\n\n\n", "-3"},
-			    {"   \t\n\t\n \t\n\n\n", "1"},
-			    {"   \t \n\t\n \t\n\n\n", "2"},
-			    {"   \t\t\n\t\n \t\n\n\n", "3"},
-			    {"    \n\t\n \t\n\n\n", "0"}
+				{ "ssstntnttssstnttttnstssstsntnttssstsnttttnstsssttntnttsssttnttnnn".replace('s', ' ').replace('t', '\t')
+					.replace('n', '\n'), "A" }, 
 		};
 		
 		for (String[] test : tests) {
-			System.out.println(WhitespaceInterpreter.execute(test[0], null));
+			System.out.println(WhitespaceInterpreter.execute(test[0], System.in));
 		}
 	}
 
